@@ -9,6 +9,8 @@ from __future__ import division
 import numpy as np
 #Imports Pandas for data management
 import pandas as pd
+#for random numbers
+import random
 #For math operations
 import math as math
 #For system requirements
@@ -31,6 +33,7 @@ py.sign_in('minigonche', '8cjqqmkb4o')
 # x_i and y_i
 
 data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
+dim_data = data_x.shape[1]
 data_y = data_x[:,data_x.shape[1] - 1]
 data_x = data_x[:,0:(data_x.shape[1] - 1)]
 
@@ -157,36 +160,61 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
 #----------------------------------------------------------------------
 
 
+#Declares the subgradient of the absolute value
+def subgradient_abs(x_single):
+    if x_single < 0:
+        return -1
+    if x_single > 0:
+        return 1
+    
+    return random.uniform(-1, 1)
+    
+#Declares the subgradient of the norm_1
+def subgradient_norm1(x_vec):
+    
+    return np.array(map(subgradient_abs, beta.T)).T
+    
+    
+#Proximity function
+def prox(t,h,x):
+    
+    
+        
 #CENTRAL FUNCTION
-
 #Declares the global function, its gradient and its Hessian
 def main_function(beta):
     
     #Column vector
     x_beta = np.dot(data_x, beta.T)
     
+    first_term = np.dot(x_beta.T, (-1)*data_y)[0,0]
     
-    first_term = np.dot(x_beta.T, (-1)*data_y)
+    second_term = sum(map(lambda k: math.log(1 + np.exp(k[0,0])) , x_beta ))
     
-    second_term = map(lambda k: math.log(1 + math.exp(k)), x_beta )
-    
-    third_term = lambda_value*np.linalg.norm(beta.T)
+    third_term = lambda_value*np.linalg.norm(beta.T, 1)
 
     return(first_term + second_term + third_term)
 #end of main_function   
 
 def main_subgradient(beta):
     
-    first_term = np.array(c)
-    #print(first_term.shape)
+    x_beta = np.dot(data_x, beta.T)
     
-    #Calculates the common vector in each coordinate
-    temp_vec = np.array(map(lambda a_column: 1/(1 - a_column.dot(x.T)), A.T))
+    #first constructs the vector y_i + exp()/(1 + exp)
+    #Constructs the gradient
+    temp_vec = data_y.T + map(lambda k: np.exp(k[0,0])/(1 + np.exp(k[0,0])), x_beta)
+    first_term = np.dot(temp_vec, data_x)
+    
+    #Constructs the subgradient
+    second_term = lambda_value*subgradient_norm1(beta)   
 
-    second_term = np.array(map(lambda a_row:  a_row.dot(temp_vec), A)).T
-    
-    third_term = np.array(map(lambda y: 2*y/(1 - y**2), x))
-    
-
-    return(first_term + second_term + third_term)
+    return(first_term + second_term)
 #end of main_gradient
+
+bet = np.zeros((1,52))
+
+print(main_subgradient(bet))
+
+
+
+    
