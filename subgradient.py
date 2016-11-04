@@ -162,21 +162,31 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
 
 #Declares the subgradient of the absolute value
 def subgradient_abs(x_single):
-    if x_single < 0:
-        return -1
-    if x_single > 0:
-        return 1
+    if x_single == 0:
+        return random.uniform(-1, 1)
     
-    return random.uniform(-1, 1)
+    return np.sign(x_single)
     
 #Declares the subgradient of the norm_1
 def subgradient_norm1(x_vec):
     
-    return np.array(map(subgradient_abs, beta.T)).T
+    return np.array(map(subgradient_abs, x_vec.T)).T
     
     
 #Proximity function
-def prox(t,h,x):
+#View hand-in for construction
+def prox(t,x):
+    
+    def coordinate_prox(x_i):
+        if x_i > t:
+            return x_i - t
+        if x_i < - t:
+            return x_i + t
+        
+        return 0    
+    
+    return np.array(map(coordinate_prox, x.T)).T    
+    
     
     
         
