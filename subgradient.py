@@ -32,31 +32,26 @@ py.sign_in('minigonche', '8cjqqmkb4o')
 #Imports the data values stored in 'data/Datos.csv' for the corresponding
 # x_i and y_i
 
-data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
-dim_data = data_x.shape[1]
-data_y = data_x[:,data_x.shape[1] - 1]
-data_x = data_x[:,0:(data_x.shape[1] - 1)]
+#data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
+#dim_data = data_x.shape[1]
+#data_y = data_x[:,data_x.shape[1] - 1]
+#data_x = data_x[:,0:(data_x.shape[1] - 1)]
 
 data_x = np.matrix([[1,2],[3,4],[5,6]])
-print(data_x)
 data_y = np.matrix([[1],[0],[1]])
 dim_data = 3
 
+#lambda value
 lambda_value = 1
 
-n = 500
-m = 200
-c = np.random.rand(1,n)
-#Puts each a_j as a column of the following matrix
-A = np.random.rand(n,m)
 #Global constant alpha
 global_alpha = 0.001
 #GLobal epsilon for treshold
 global_eps = 0.001
-#global difference measure for gradient
-global_dif = 0.000001
 #Measure how many iterations to print pogress
-print_counter = 20
+print_counter = 1000
+#maximimum iteration
+max_ite = 10000
 
 
 #----------------------------------------------------------------------
@@ -126,13 +121,12 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
         x_actual = x
         g = subgradient(x_actual)
 
-
         a = alpha(x_actual, g, a)
-        x = x_actual - a*(g/np.linalg.norm(g))
+        x = x_actual - a*(g/np.linalg.norm(g.T))
         x_last = x_actual
         
         #Checks the the treshold
-        treshold = global_count > 100000
+        treshold = global_count > max_ite
         
         if count == print_counter:
             print(x)
@@ -153,14 +147,14 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
         #Refreshes the global minimum
         if(temp_value < min_value):
             min_x = x
-            min_value = temp_value
+            min_value = temp_value            
         
     
     return [min_x, min_value, x_variables, function_values, global_count, time.time() - start_time]
 #end of run_subgradient_descent
 
 #The proximal gradient method
-def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, initial = None ):
+def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, initial = None ):
     """
         Parameters
         ----------
@@ -168,12 +162,12 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, initial =
             The dimension of the vector that the gradient receive.
             The domain's dimension of the function we wish to minimize
         fun : function(numpy.vector)
-            A function of the form g(x) + h(x) where both are continuos but
-            only g is defirentiable
+            A function of the form h(x) = f(x) + g(x) where both are continuos but
+            only f is defirentiable
         prox_fun : function(numpy.vector)
             The proximity function that will be applied to h(x)
         gradient : functon(numpy.vector)
-            The gradient function of g(x)
+            The gradient function of f(x)
         alpha : function(numpy.vector, numpy.vector, float)
             A functon that receives two numpy.vecotors (real vectors: 
             x_k and g_k ) and the previuos alph to return the next alpha step
@@ -216,13 +210,13 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, initial =
 
         a = alpha(x_actual, g, a)
         
-        G = (x_actual - prox_fun(x_actual - a*g))/a
+        G = (x_actual - prox_fun(a,x_actual - a*g))/a
         
         x = x_actual - a*G
         x_last = x_actual
         
         #Checks the the treshold
-        treshold = global_count > 10000
+        treshold = global_count > max_ite or np.linalg.norm(G)< eps
 
         grad_last = g
         
@@ -235,6 +229,7 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, initial =
         
         if count == print_counter:
             print(temp_value)
+            print(x)
             count = 0
             
         count = count + 1
@@ -250,7 +245,7 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, initial =
 
 
 #----------------------------------------------------------------------
-#------------------------ Experiment Start ----------------------------
+#------------------------ Support Functions ---------------------------
 #----------------------------------------------------------------------
 
 
@@ -261,16 +256,10 @@ def subgradient_abs(x_single):
     if x_single < 0:
         return -1
 
-    return random.uniform(-1, 1)
+    return 1/2    
+    #return random.uniform(-1, 1)
     
-
-    
-#Declares the subgradient of the norm_1
-def subgradient_norm1(x_vec):
-    
-    return np.array(map(subgradient_abs, x_vec.T)).T
-    
-    
+           
 #Proximity function
 #View hand-in for construction
 def prox(t,x):
@@ -283,12 +272,38 @@ def prox(t,x):
             
         return 0    
     
-    return np.array(map(coordinate_prox, x.T)).T    
+    return np.array(map(lambda k: coordinate_prox(k[0,0]), x.T)).T    
+#end of prox
+
+#declares the gloal constant alpha function
+def alpha_fun_cons(x,g,a):
+    return global_alpha
+#end of alpha_fun_dec
+
+
+#declares the gloal decreasing alpha function
+def alpha_fun_decs(x,g,a):
+    if a == None:
+        return 1
     
+    return 1/(1/a + 1)
+#end of alpha_fun_dec
+
+def alpha_fun_back(x,g,a):
+    #For the first iteration
+    if(g is None):
+        return global_alpha
+
+    rho = 4/5
+    c = 4/5        
+    a = 1
+
+    while(H(x + a*g) > H(x) + c*a*np.dot(H_subgradient(x),g.T) ):
+        a = rho*a
     
-    
-        
-#CENTRAL FUNCTION
+    return a
+# end of alpha_backtracking
+
 #Declares the log(1 + exp(x)) so it can handel large numbers
 def log_exp(x):
     if x > 705:
@@ -301,51 +316,72 @@ def exp_over_exp(x):
     if x > 36:
         return 1
     return np.exp(x)/(1 + np.exp(x))
-#end exp_over_exp    
-  
+#end exp_over_exp
 
-#Declares the global function, its gradient and its Hessian
-def main_function(beta):
-    
-    #Column vector
+#----------------------------------------------------------------------
+#-------------------------- Main Functions ----------------------------
+#----------------------------------------------------------------------    
+
+def F(beta):
+	#Column vector
     x_beta = np.dot(data_x, beta.T)
     
     first_term = np.dot(x_beta.T, (-1)*data_y)[0,0]
     
     second_term = sum(map(lambda k: log_exp(k[0,0]) , x_beta ))
-    
-    third_term = lambda_value*np.linalg.norm(beta.T, 1)
+        
+    return(first_term + second_term)
+#end of F    
 
-    return(first_term + second_term + third_term)
-#end of main_function   
-
-def main_subgradient(beta):
+def F_gradient(beta):
     
     x_beta = np.dot(data_x, beta.T)
-    
+
     #first constructs the vector y_i + exp()/(1 + exp)
     #Constructs the gradient
     temp_vec = (-1)*data_y.T + map(lambda k: exp_over_exp(k[0,0]), x_beta)
     first_term = np.dot(temp_vec, data_x)
+        
+    return(first_term)
+#end of F_gradient
+
+#declares the function g(x) = lamnda*|beta|
+def G(beta):
+	return lambda_value*np.linalg.norm(beta.T, 1)
+#end of G
+
+#Declares the subgradient of the fuction G
+def G_subgradient(x_vec):
     
-    
-    #Constructs the subgradient
-    second_term = lambda_value*subgradient_norm1(beta)   
+    return lambda_value*np.array(map(subgradient_abs, x_vec.T)).T
+#end of G_subgradient
+
+#Declares the global function h, its subgradient 
+def H(beta):
+	return F(beta) + G(beta)
+     
+#end of main_function   
+
+def H_subgradient(beta):
+            
+    return(F_gradient(beta) + G_subgradient(beta))
+#end of H_subgradient
 
 
-    return(first_term + second_term)
-#end of main_gradient
 
-def alpha_fun(x,g,a):
-    if a == None:
-        return 1
-    
-    return 1/(1/a + 0.1)
 
-result = run_subgradient_descent(dim_data -1, main_function, main_subgradient, alpha_fun, 0.00001, initial = None)
+#result = run_subgradient_descent(dim_data -1, H, H_subgradient, alpha_fun_decs, 0.00001, initial = None)
+result = run_proximal_gradient_descent(dim_data-1, H, prox, F_gradient, alpha_fun_decs, 0.00001, initial = None )
 
 print(result[1])
+print(result[4])
 
+'''
+x = np.zeros((1,2))
+x[0,0] = 0.0000000009
+x[0,1] = 0.0722
 
+print main_function(x)
 
+'''
     
