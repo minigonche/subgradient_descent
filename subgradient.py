@@ -36,10 +36,12 @@ py.sign_in('minigonche', '8cjqqmkb4o')
 #dim_data = data_x.shape[1]
 #data_y = data_x[:,data_x.shape[1] - 1]
 #data_x = data_x[:,0:(data_x.shape[1] - 1)]
+#n = data_x.shape[0]
 
 data_x = np.matrix([[1,2],[3,4],[5,6]])
 data_y = np.matrix([[1],[0],[1]])
 dim_data = 3
+n = 3
 
 #lambda value
 lambda_value = 1
@@ -49,7 +51,7 @@ global_alpha = 0.001
 #GLobal epsilon for treshold
 global_eps = 0.001
 #Measure how many iterations to print pogress
-print_counter = 1000
+print_counter = 20
 #maximimum iteration
 max_ite = 10000
 
@@ -114,7 +116,7 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
     function_values = [fun(x)]
     
     
-    #Becomes true when |f(x_n+1) - f(x_n)| < eps
+    #Becomes true when the iterations are exceeded
     while(not treshold):
 
         #Calculates the necesarry advancing parameters
@@ -129,7 +131,6 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
         treshold = global_count > max_ite
         
         if count == print_counter:
-            print(x)
             print(temp_value)
             print(min_value)
             count = 0
@@ -201,7 +202,7 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
     x_variables = [x]
     function_values = [fun(x)]
     
-    #Becomes true when the iterations are exceeded
+    #Becomes true when the iterations are exceeded or when |G| < eps
     while(not treshold):
 
         #Calculates the necesarry advancing parameters
@@ -229,7 +230,6 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
         
         if count == print_counter:
             print(temp_value)
-            print(x)
             count = 0
             
         count = count + 1
@@ -241,12 +241,249 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
     return [final_x, final_value, x_variables, function_values, global_count, time.time() - start_time]
     
 
+#Runs the ADMM method
+#Minimizes a function of the form sum(f)+ g
+def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initial = None):
+    """
+        Parameters
+        ----------
+        dim : int
+            The dimension of the vector that the function and subgradient receive.
+            The domain's dimension of the function we wish to minimize
+        f_array : array of functions of the form: function(numpy.vector)
+            The array of the differential functions that will be added
+        array_gradient_f : array of funtions of the form functon(numpy.vector)
+            The array of the gradient functions of each f_i(x)
+        g : function(numpy.vector)
+            The non-diferential portion fo the function we wish to minimize
+        subgradient_f : functon(numpy.vector)
+            The subgradient  function of g(x)                
+        alpha : function(numpy.vector, numpy.vector, float)
+            A functon that receives two numpy.vecotors (real vectors: 
+            x_k and g_k ) and the previuos alph to return the next alpha step
+        eps : float
+            The epsylon that serves as a stopping criteria for the algorithm
+        Initial : np:vector
+            The initial vector. If None is received, then the procedure strarts
+            at zero.
+    """
+
+    #Starts the timer
+    start_time = time.time()
+
+    #declares the nunmber of functions in the array
+    n = len(f_array)
+
+    #Initial values
+    #The first alpha and beta matrix are initialized at None
+    x = initial
+    if x is None:
+        x = np.zeros((1,dim))
+        
+    beta = np.zeros((1,dim))
+    nu = np.zeros((1,dim))
+    mu = np.zeros((1,dim))
+    mu_array = n*[np.zeros((1,dim))]
+    nu_array = n*[np.zeros((1,dim))]
+    
+    #Treshold
+    treshold = False
+    
+    #printing variables
+    count = 1
+    global_count = 0
+    
+    #Graphing variables
+    x_variables = [x]
+    function_values = [sum(map(lambda f: f(mu),f_array)) + g(mu)]
+
+    #Declares the individual functions that need to be minimized
+    nu_functions = []
+    for i in range(len(n)):
+        def f_i(nu):
+            first_term = f_array[i](nu)
+            second_term = (a/2)*(np.linalg.norm(nu - beta + mu_array[i] )**2)
+            return first_term + second_term
+
+        nu_functions.append(f_i)
+    
+    #Declares the individual gradients that will be used to minimized
+    nu_gradients = []
+    for i in range(len(n)):
+        def gradient_i(nu):
+            first_term = array_gradient_f[i](nu)
+            second_term = a*np.linalg.norm(nu - beta + mu_array[i] )
+            return first_term + second_term
+
+        nu_gradients.append(gradient_i)
+
+    #declares the beta function that will also be needed to minimized
+    def beta_fun(x):
+        first_term = g(x)
+        second_term = (n*a/2)*(np.linalg.norm(x - nu - mu ))**2
+        return first_term + second_term
+
+    #declares teh beta function that will also be needed to minimized
+    def beta_subgrad(x):
+        first_term = G_subgradient(x)
+        second_term = (n*a)*(np.linalg.norm(x - nu - mu ))
+        return first_term + second_term
+
+
+    #Becomes true when the iterations are exceeded
+    while(not treshold):
+
+        #Calculates every nu
+        for i in range(n):
+        	nu_array[i] = run_gradient_descent(dim, 
+                                               nu_functions[i], 
+                                               nu_gradients[i], 
+                                               alpha = lambda x, p: global_alpha,
+                                               B_matrix = lambda B, x, x_prev: np.identity(n), 
+                                               eps = global_eps, 
+                                               inverse = True, 
+                                               initial = None)[0]
+        #Finds \hat nu_{k+1}       
+        nu = sum(nu_array)/n
+
+        beta = run_subgradient_descent(dim, beta_fun, beta_subgrad, alpha_fun_decs, 0.00001, initial = None)[0]	
+
+        mu_array = map(lambda i: mu_array[i] + nu_array[i] - beta, range(n))
+
+        mu = sum(mu_array)/n       
+        
+        #Checks the the treshold
+        treshold = global_count > max_ite
+        
+        if count == print_counter:
+            print(temp_value)
+            print(min_value)
+            count = 0
+        
+        count = count + 1
+        global_count = global_count +1
+        subgrad_last = g
+        
+        #Saves the current x
+        x_variables.append(mu)
+        #Calcultaes the value
+        temp_value = sum(map(lambda f: f(mu),f_array)) + g(mu)
+        #Appends the calculated value
+        function_values.append(temp_value)
+                        
+    
+    return [min_x, min_value, x_variables, function_values, global_count, time.time() - start_time]
+#end of run_ADMM
+
+
+#Runs the gradient descent with the given parameters
+#Serves as a unified method
+def run_gradient_descent(dim, fun, gradient, alpha, B_matrix, eps, inverse = True, initial = None):
+    """
+        Parameters
+        ----------
+        dim : int
+            The dimension of the vector that the function and gradient receive.
+            The domain's dimension of the function we wish to minimize
+        fun : function(numpy.vector)
+            The function we wish to minimize
+        gradient : functon(numpy.vector)
+            A functon that receives a numpy.vecotr (real vector: x_k) and 
+            returns the gradient (as a numpy.vector) of the given function 
+            evaluated at the real number received as parameter
+        alpha : function(numpy.vector, numpy.vector)
+            A functon that receives two numpy.vecotors (real vectors: 
+            x_k and p_k ) and returns the next alpha step
+        B_matrix : function(np.matrix, numpy.vector)
+            A function that receives a numpy.matrix (the previous matrix) and 
+            numpy.vecotr (real vector) and returns the next multiplication
+            np.matrix 
+        eps : float
+            The epsylon that serves as a stopping criteria for the algorithm
+        solve : boolean
+            Indicates if the B_matrix method gives the B or the B^-1 matrix
+        Initial : np:vector
+            The initial vector. If None is received, then the procedure strarts
+            at zero.
+    """
+    #Starts the timer
+    start_time = time.time()
+
+    #Initial values
+    #The first alpha and B matrix are initialized at None
+    
+    x = initial
+    if x is None:
+        x = np.zeros((1,dim))
+        
+    x_last = np.zeros((1,dim))
+    grad_last = np.zeros((1,dim))
+    B = None
+    a = None
+    p = None
+    
+    #Treshold
+    treshold = False
+    
+    #printing variables
+    count = 1
+    global_count = 0
+    
+    #Graphing variables
+    x_variables = []
+    function_values = []
+    
+    
+    #Becomes true when |f(x_n+1) - f(x_n)| < eps
+    while(not treshold):
+        #Saves the Value
+        x_variables.append(x)
+        function_values.append(fun(x))
+        
+        #Calculates the necesarry advancing parameters
+        x_actual = x
+        
+        B = B_matrix(B, x_actual,x_last)
+        grad = gradient(x_actual)
+
+        #Calcultaes the next value
+        if inverse:
+            p = (-1)*B.dot(grad.T).T
+        else:
+            p = (-1)*np.linalg.solve(B, grad.T).T
+            
+        
+        #raw_input('espere')    
+        
+        a = alpha(x_actual, p)
+        x = x_actual + a*p
+        x_last = x_actual
+        
+        #Checks the the treshold
+        treshold = np.linalg.norm(grad) < eps  or np.linalg.norm(grad - grad_last) < global_dif
+        
+        if count == print_counter:
+            print(np.linalg.norm(grad))
+            count = 0
+        
+        count = count + 1
+        global_count = global_count +1
+        grad_last = grad
+        
+    
+    x_final = x
+    value_final = fun(x)
+    
+    
+    return [x_final, value_final, x_variables, function_values, global_count, time.time() - start_time]
+#end of run_gradient_descent
 
 
 
 #----------------------------------------------------------------------
 #------------------------ Support Functions ---------------------------
 #----------------------------------------------------------------------
+
 
 
 #Declares the subgradient of the absolute value
@@ -345,14 +582,18 @@ def F_gradient(beta):
     return(first_term)
 #end of F_gradient
 
+#Since f is differentiable, its subgradient is the gradient
+def F_subgradient(beta):
+	return F_gradient(beta)
+#end of F_subgrdient	
+
 #declares the function g(x) = lamnda*|beta|
 def G(beta):
 	return lambda_value*np.linalg.norm(beta.T, 1)
 #end of G
 
 #Declares the subgradient of the fuction G
-def G_subgradient(x_vec):
-    
+def G_subgradient(x_vec):    
     return lambda_value*np.array(map(subgradient_abs, x_vec.T)).T
 #end of G_subgradient
 
@@ -362,11 +603,16 @@ def H(beta):
      
 #end of main_function   
 
-def H_subgradient(beta):
-            
+#Declares the subgradient fo h(x)
+def H_subgradient(beta):            
     return(F_gradient(beta) + G_subgradient(beta))
 #end of H_subgradient
 
+#Declares a stochastic subgradient for the dimentions of h(x)
+def H_subgradient_stoc(beta):
+       
+    return np.random(())
+#end of H_subgradient_stoc
 
 
 
