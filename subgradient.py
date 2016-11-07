@@ -53,7 +53,9 @@ global_eps = 0.001
 #Measure how many iterations to print pogress
 print_counter = 20
 #maximimum iteration
-max_ite = 10000
+max_ite = 1000
+#global difference measure for gradient
+global_dif = 0.000001
 
 
 #----------------------------------------------------------------------
@@ -276,13 +278,13 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
 
     #Initial values
     #The first alpha and beta matrix are initialized at None
-    x = initial
-    if x is None:
-        x = np.zeros((1,dim))
-        
+    mu = initial
+    if mu is None:
+        mu = np.zeros((1,dim))
+    
+    a = None    
     beta = np.zeros((1,dim))
-    nu = np.zeros((1,dim))
-    mu = np.zeros((1,dim))
+    nu = np.zeros((1,dim))    
     mu_array = n*[np.zeros((1,dim))]
     nu_array = n*[np.zeros((1,dim))]
     
@@ -294,28 +296,34 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
     global_count = 0
     
     #Graphing variables
-    x_variables = [x]
+    x_variables = [mu]
     function_values = [sum(map(lambda f: f(mu),f_array)) + g(mu)]
 
-    #Declares the individual functions that need to be minimized
-    nu_functions = []
-    for i in range(len(n)):
+    #Declares the method that return each indivudual functon to be minimized
+    def get_f(i):
         def f_i(nu):
             first_term = f_array[i](nu)
             second_term = (a/2)*(np.linalg.norm(nu - beta + mu_array[i] )**2)
             return first_term + second_term
 
-        nu_functions.append(f_i)
+        return f_i
+
+    #Fills the array with the corresponding functions    
+    nu_functions = []    
+    nu_functions = map(get_f, range(n))    
     
-    #Declares the individual gradients that will be used to minimized
-    nu_gradients = []
-    for i in range(len(n)):
+    #Declares teh method that return each individual gradient    
+    def get_gradient_f(i):
         def gradient_i(nu):
             first_term = array_gradient_f[i](nu)
             second_term = a*np.linalg.norm(nu - beta + mu_array[i] )
             return first_term + second_term
 
-        nu_gradients.append(gradient_i)
+        return gradient_i
+
+    #fills the array with the corresponding gradients
+    nu_gradients = []
+    nu_gradients = map(get_gradient_f, range(n))     
 
     #declares the beta function that will also be needed to minimized
     def beta_fun(x):
@@ -333,23 +341,26 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
     #Becomes true when the iterations are exceeded
     while(not treshold):
 
+    	a = alpha(mu,beta,a)
         #Calculates every nu
         for i in range(n):
         	nu_array[i] = run_gradient_descent(dim, 
                                                nu_functions[i], 
                                                nu_gradients[i], 
                                                alpha = lambda x, p: global_alpha,
-                                               B_matrix = lambda B, x, x_prev: np.identity(n), 
+                                               B_matrix = lambda B, x, x_prev: np.identity(dim), 
                                                eps = global_eps, 
                                                inverse = True, 
                                                initial = None)[0]
         #Finds \hat nu_{k+1}       
         nu = sum(nu_array)/n
-
+        
+        #Finds beta_{k+1}
         beta = run_subgradient_descent(dim, beta_fun, beta_subgrad, alpha_fun_decs, 0.00001, initial = None)[0]	
 
         mu_array = map(lambda i: mu_array[i] + nu_array[i] - beta, range(n))
 
+        #Finds \hat mu_{k+1}
         mu = sum(mu_array)/n       
         
         #Checks the the treshold
@@ -370,9 +381,12 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         temp_value = sum(map(lambda f: f(mu),f_array)) + g(mu)
         #Appends the calculated value
         function_values.append(temp_value)
-                        
+
+    x_final = mu
+    value_final = sum(map(lambda f: f(mu),f_array)) + g(mu)    
+
     
-    return [min_x, min_value, x_variables, function_values, global_count, time.time() - start_time]
+    return [x_final, value_final, x_variables, function_values, global_count, time.time() - start_time]
 #end of run_ADMM
 
 
@@ -617,17 +631,42 @@ def H_subgradient_stoc(beta):
 
 
 #result = run_subgradient_descent(dim_data -1, H, H_subgradient, alpha_fun_decs, 0.00001, initial = None)
-result = run_proximal_gradient_descent(dim_data-1, H, prox, F_gradient, alpha_fun_decs, 0.00001, initial = None )
+#result = run_proximal_gradient_descent(dim_data-1, H, prox, F_gradient, alpha_fun_decs, 0.00001, initial = None )
+
+
+
+def construct_f(i):
+    def f_i(beta):
+    	x_beta = np.dot(data_x[i,:],beta.T)[0,0]
+    	return (-1)*data_y[i,0]*x_beta + log_exp(x_beta)
+
+    return f_i	
+
+    array.append(f_i)
+def construct_grad_f(i):
+    def subgrad_f_i(beta):
+    	x_beta = np.dot(data_x[i,:],beta.T)[0,0]
+    	return ((-1)*data_y[i,0] + exp_over_exp(x_beta))*data_x[i,:]
+
+    return subgrad_f_i	
+
+array_f = map(construct_f, range(n))
+grad_array_f = map(construct_grad_f, range(n))
+
+result = run_ADMM(dim_data - 1, array_f, grad_array_f, G, G_subgradient, alpha_fun_cons, global_eps, initial = None)
 
 print(result[1])
 print(result[4])
 
 '''
-x = np.zeros((1,2))
-x[0,0] = 0.0000000009
-x[0,1] = 0.0722
+x = np.zeros((1,3))
+x[0,0] = 1
+x[0,1] = 1
+x[0,2] = 1
 
-print main_function(x)
+print F_gradient(x)
 
 '''
+
+
     
