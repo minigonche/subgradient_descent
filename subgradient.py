@@ -32,16 +32,20 @@ py.sign_in('minigonche', '8cjqqmkb4o')
 #Imports the data values stored in 'data/Datos.csv' for the corresponding
 # x_i and y_i
 
-#data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
-#dim_data = data_x.shape[1]
-#data_y = data_x[:,data_x.shape[1] - 1]
-#data_x = data_x[:,0:(data_x.shape[1] - 1)]
-#n = data_x.shape[0]
+'''
+data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
+dim_data = data_x.shape[1]
+data_y = data_x[:,data_x.shape[1] - 1]
+data_x = data_x[:,0:(data_x.shape[1] - 1)]
+n = data_x.shape[0]
+'''
+
 
 data_x = np.matrix([[1,2],[3,4],[5,6]])
 data_y = np.matrix([[1],[0],[1]])
 dim_data = 3
 n = 3
+
 
 #lambda value
 lambda_value = 1
@@ -51,9 +55,9 @@ global_alpha = 0.001
 #GLobal epsilon for treshold
 global_eps = 0.001
 #Measure how many iterations to print pogress
-print_counter = 20
+print_counter = 10
 #maximimum iteration
-max_ite = 1000
+max_ite = 100000
 #global difference measure for gradient
 global_dif = 0.000001
 
@@ -65,7 +69,7 @@ global_dif = 0.000001
 #NOTE: Vectors are assumed as matrix of dimension 1 x n
 #Runs the subgradient descent with the given parameters
 #Serves as a unified method
-def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
+def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, print_progress = True):
     """
         Parameters
         ----------
@@ -86,6 +90,8 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
         Initial : np:vector
             The initial vector. If None is received, then the procedure strarts
             at zero.
+        print_progress : boolean
+            Boolean indicating if the procedure should print its progress
     """
     #Starts the timer
     start_time = time.time()
@@ -125,14 +131,16 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
         x_actual = x
         g = subgradient(x_actual)
 
-        a = alpha(x_actual, g, a)
-        x = x_actual - a*(g/np.linalg.norm(g.T))
+        p = (-1)*g/np.linalg.norm(g.T)
+
+        a = alpha(x_actual, p, a)
+        x = x_actual + a*p
         x_last = x_actual
         
         #Checks the the treshold
-        treshold = global_count > max_ite
+        treshold = global_count > max_ite or np.linalg.norm(x - x_last) < eps
         
-        if count == print_counter:
+        if print_progress and count == print_counter:
             print(temp_value)
             print(min_value)
             count = 0
@@ -157,7 +165,7 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None):
 #end of run_subgradient_descent
 
 #The proximal gradient method
-def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, initial = None ):
+def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, initial = None , print_progress = True):
     """
         Parameters
         ----------
@@ -177,6 +185,8 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
         Initial : np:vector
             The initial vector. If None is received, then the procedure strarts
             at zero.    
+        print_progress : boolean
+            Boolean indicating if the procedure should print its progress    
     """
     #Starts the timer
     start_time = time.time()
@@ -190,7 +200,7 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
         
     x_last = np.zeros((1,dim))
     grad_last = np.zeros((1,dim))
-    a = None
+    a = global_alpha
     g = None
     
     #Treshold
@@ -211,11 +221,11 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
         x_actual = x
         g = gradient(x_actual)
 
-        a = alpha(x_actual, g, a)
+        G = (-1)*(x_actual - prox_fun(a,x_actual - a*g))/a
+
+        a = alpha(x_actual, G, a)
         
-        G = (x_actual - prox_fun(a,x_actual - a*g))/a
-        
-        x = x_actual - a*G
+        x = x_actual + a*G
         x_last = x_actual
         
         #Checks the the treshold
@@ -230,7 +240,7 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
         #Appends the calculated value
         function_values.append(temp_value)
         
-        if count == print_counter:
+        if print_progress and count == print_counter:
             print(temp_value)
             count = 0
             
@@ -245,7 +255,7 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
 
 #Runs the ADMM method
 #Minimizes a function of the form sum(f)+ g
-def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initial = None):
+def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initial = None, print_progress = True):
     """
         Parameters
         ----------
@@ -268,6 +278,8 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         Initial : np:vector
             The initial vector. If None is received, then the procedure strarts
             at zero.
+        print_progress : boolean
+            Boolean indicating if the procedure should print its progress    
     """
 
     #Starts the timer
@@ -316,13 +328,12 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
     def get_gradient_f(i):
         def gradient_i(nu):
             first_term = array_gradient_f[i](nu)
-            second_term = a*np.linalg.norm(nu - beta + mu_array[i] )
+            second_term = a*(nu - beta + mu_array[i] )            
             return first_term + second_term
 
         return gradient_i
 
-    #fills the array with the corresponding gradients
-    nu_gradients = []
+    #fills the array with the corresponding gradients    
     nu_gradients = map(get_gradient_f, range(n))     
 
     #declares the beta function that will also be needed to minimized
@@ -334,7 +345,7 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
     #declares teh beta function that will also be needed to minimized
     def beta_subgrad(x):
         first_term = G_subgradient(x)
-        second_term = (n*a)*(np.linalg.norm(x - nu - mu ))
+        second_term = (n*a)*(x - nu - mu )
         return first_term + second_term
 
 
@@ -346,44 +357,53 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         for i in range(n):
         	nu_array[i] = run_gradient_descent(dim, 
                                                nu_functions[i], 
-                                               nu_gradients[i], 
-                                               alpha = lambda x, p: global_alpha,
+                                               nu_gradients[i],
+                                               alpha = lambda x,p,a: global_alpha,
+                                               #alpha = construct_apha_back(nu_functions[i],nu_gradients[i]),
                                                B_matrix = lambda B, x, x_prev: np.identity(dim), 
                                                eps = global_eps, 
                                                inverse = True, 
-                                               initial = None)[0]
+                                               initial = None,
+                                               print_progress = False)[0]
         #Finds \hat nu_{k+1}       
         nu = sum(nu_array)/n
         
         #Finds beta_{k+1}
-        beta = run_subgradient_descent(dim, beta_fun, beta_subgrad, alpha_fun_decs, 0.00001, initial = None)[0]	
+        beta = run_subgradient_descent(dim,
+                                       beta_fun, 
+                                       beta_subgrad,
+                                       alpha_fun_decs,
+                                       eps = 0.00001, 
+                                       initial = None,
+                                       print_progress = False)[0]	
 
         mu_array = map(lambda i: mu_array[i] + nu_array[i] - beta, range(n))
 
         #Finds \hat mu_{k+1}
-        mu = sum(mu_array)/n       
-        
+        mu = sum(mu_array)/n
+
         #Checks the the treshold
         treshold = global_count > max_ite
         
-        if count == print_counter:
+        if print_progress and count == print_counter:
             print(temp_value)
-            print(min_value)
             count = 0
         
         count = count + 1
         global_count = global_count +1
         subgrad_last = g
         
+        x = nu
+
         #Saves the current x
-        x_variables.append(mu)
+        x_variables.append(x)
         #Calcultaes the value
-        temp_value = sum(map(lambda f: f(mu),f_array)) + g(mu)
+        temp_value = sum(map(lambda f: f(x),f_array)) + g(x)
         #Appends the calculated value
         function_values.append(temp_value)
 
-    x_final = mu
-    value_final = sum(map(lambda f: f(mu),f_array)) + g(mu)    
+    x_final = x
+    value_final = sum(map(lambda f: f(x),f_array)) + g(x)    
 
     
     return [x_final, value_final, x_variables, function_values, global_count, time.time() - start_time]
@@ -392,7 +412,7 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
 
 #Runs the gradient descent with the given parameters
 #Serves as a unified method
-def run_gradient_descent(dim, fun, gradient, alpha, B_matrix, eps, inverse = True, initial = None):
+def run_gradient_descent(dim, fun, gradient, alpha, B_matrix, eps, inverse = True, initial = None, print_progress = True):
     """
         Parameters
         ----------
@@ -419,6 +439,8 @@ def run_gradient_descent(dim, fun, gradient, alpha, B_matrix, eps, inverse = Tru
         Initial : np:vector
             The initial vector. If None is received, then the procedure strarts
             at zero.
+        print_progress : boolean
+            Boolean indicating if the procedure should print its progress
     """
     #Starts the timer
     start_time = time.time()
@@ -464,22 +486,21 @@ def run_gradient_descent(dim, fun, gradient, alpha, B_matrix, eps, inverse = Tru
         if inverse:
             p = (-1)*B.dot(grad.T).T
         else:
-            p = (-1)*np.linalg.solve(B, grad.T).T
-            
+            p = (-1)*np.linalg.solve(B, grad.T).T                        
         
-        #raw_input('espere')    
-        
-        a = alpha(x_actual, p)
+        a = alpha(x_actual, p, a)
         x = x_actual + a*p
         x_last = x_actual
         
         #Checks the the treshold
         treshold = np.linalg.norm(grad) < eps  or np.linalg.norm(grad - grad_last) < global_dif
         
-        if count == print_counter:
+        
+        if  print_progress and count == print_counter:
             print(np.linalg.norm(grad))
             count = 0
         
+
         count = count + 1
         global_count = global_count +1
         grad_last = grad
@@ -535,9 +556,9 @@ def alpha_fun_cons(x,g,a):
 #declares the gloal decreasing alpha function
 def alpha_fun_decs(x,g,a):
     if a == None:
-        return 1
+        return 1/1000
     
-    return 1/(1/a + 1)
+    return 1/(1/a + 100)
 #end of alpha_fun_dec
 
 def alpha_fun_back(x,g,a):
@@ -545,8 +566,8 @@ def alpha_fun_back(x,g,a):
     if(g is None):
         return global_alpha
 
-    rho = 4/5
-    c = 4/5        
+    rho = 3/5
+    c = 3/5        
     a = 1
 
     while(H(x + a*g) > H(x) + c*a*np.dot(H_subgradient(x),g.T) ):
@@ -554,6 +575,27 @@ def alpha_fun_back(x,g,a):
     
     return a
 # end of alpha_backtracking
+
+#Method that constructs the corresponding backtracking method given the function and
+# its gradient
+def construct_apha_back(fun, fun_grad):
+
+    def alpha_temp(x,g,a):
+        #For the first iteration
+        if(g is None):
+            return global_alpha
+
+        rho = 3/5
+        c = 3/5        
+        a = 1
+
+        while(fun(x + a*g) > fun(x) + c*a*np.dot(fun_grad(x),g.T) ):
+            a = rho*a
+        
+        return a
+
+    return alpha_temp
+#construct_apha_back    
 
 #Declares the log(1 + exp(x)) so it can handel large numbers
 def log_exp(x):
@@ -623,15 +665,14 @@ def H_subgradient(beta):
 #end of H_subgradient
 
 #Declares a stochastic subgradient for the dimentions of h(x)
-def H_subgradient_stoc(beta):
-       
-    return np.random(())
+def H_subgradient_stoc(beta):       
+    return np.matrix(np.random.normal(size = beta.shape[1]))
 #end of H_subgradient_stoc
 
 
 
-#result = run_subgradient_descent(dim_data -1, H, H_subgradient, alpha_fun_decs, 0.00001, initial = None)
-#result = run_proximal_gradient_descent(dim_data-1, H, prox, F_gradient, alpha_fun_decs, 0.00001, initial = None )
+#result = run_subgradient_descent(dim_data -1, H, H_subgradient, alpha_fun_decs, 0.00000001, initial = None)
+#result = run_proximal_gradient_descent(dim_data-1, H, prox, F_gradient, alpha_fun_back, 0.00001, initial = None )
 
 
 
@@ -653,7 +694,9 @@ def construct_grad_f(i):
 array_f = map(construct_f, range(n))
 grad_array_f = map(construct_grad_f, range(n))
 
-result = run_ADMM(dim_data - 1, array_f, grad_array_f, G, G_subgradient, alpha_fun_cons, global_eps, initial = None)
+result = run_ADMM(dim_data - 1, array_f, grad_array_f, G, G_subgradient, alpha_fun_back, global_eps, initial = None)
+
+
 
 print(result[1])
 print(result[4])
