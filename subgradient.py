@@ -32,34 +32,40 @@ py.sign_in('minigonche', '8cjqqmkb4o')
 #Imports the data values stored in 'data/Datos.csv' for the corresponding
 # x_i and y_i
 
-'''
+
 data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
 dim_data = data_x.shape[1]
 data_y = data_x[:,data_x.shape[1] - 1]
 data_x = data_x[:,0:(data_x.shape[1] - 1)]
 n = data_x.shape[0]
-'''
 
+'''
 
 data_x = np.matrix([[1,2],[3,4],[5,6]])
 data_y = np.matrix([[1],[0],[1]])
 dim_data = 3
 n = 3
 
+'''
 
 #lambda value
 lambda_value = 1
 
 #Global constant alpha
-global_alpha = 0.001
+global_alpha = 0.01
 #GLobal epsilon for treshold
-global_eps = 0.001
+global_eps = 0.0001
 #Measure how many iterations to print pogress
-print_counter = 10
+print_counter = 2
 #maximimum iteration
-max_ite = 100000
+max_ite = 10000
 #global difference measure for gradient
 global_dif = 0.000001
+#Global alpha step
+alpha_step = 500
+#Stochastic percentage to calculate th number of rows
+#to be included in the stochastic method
+stochastic_percentage = 0.8
 
 
 #----------------------------------------------------------------------
@@ -164,8 +170,8 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, p
     return [min_x, min_value, x_variables, function_values, global_count, time.time() - start_time]
 #end of run_subgradient_descent
 
-#The proximal gradient method
-def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, initial = None , print_progress = True):
+#The proximal gradient method that will be used with backtracking
+def run_proximal(dim, fun, prox_fun, gradient, alpha, eps, initial = None , print_progress = True):
     """
         Parameters
         ----------
@@ -221,9 +227,11 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
         x_actual = x
         g = gradient(x_actual)
 
-        G = (-1)*(x_actual - prox_fun(a,x_actual - a*g))/a
+        a = alpha(x_actual, g, a)
 
-        a = alpha(x_actual, G, a)
+        G = (-1)*(x_actual - prox_fun(a, x_actual - a*g))/a
+
+        
         
         x = x_actual + a*G
         x_last = x_actual
@@ -245,12 +253,115 @@ def run_proximal_gradient_descent(dim, fun, prox_fun, gradient, alpha, eps, init
             count = 0
             
         count = count + 1
-        global_count = global_count +1
+        global_count = global_count + 1
 
     final_x = x
     final_value = temp_value
     
     return [final_x, final_value, x_variables, function_values, global_count, time.time() - start_time]
+#end of run_proximal
+
+#The proximal gradient method that will be used with backtracking
+def run_proximal_accelerated(dim, fun, prox_fun, gradient, alpha, eps, initial = None , print_progress = True):
+    """
+        Parameters
+        ----------
+        dim : int
+            The dimension of the vector that the gradient receive.
+            The domain's dimension of the function we wish to minimize
+        fun : function(numpy.vector)
+            A function of the form h(x) = f(x) + g(x) where both are continuos but
+            only f is defirentiable
+        prox_fun : function(numpy.vector)
+            The proximity function that will be applied to h(x)
+        gradient : functon(numpy.vector)
+            The gradient function of f(x)
+        alpha : function(numpy.vector, numpy.vector, float)
+            A functon that receives two numpy.vecotors (real vectors: 
+            x_k and g_k ) and the previuos alph to return the next alpha step
+        Initial : np:vector
+            The initial vector. If None is received, then the procedure strarts
+            at zero.    
+        print_progress : boolean
+            Boolean indicating if the procedure should print its progress    
+    """
+    #Starts the timer
+    start_time = time.time()
+
+    #Initial values
+    #The first alpha and B matrix are initialized at None
+    
+    x = initial
+    if x is None:
+        x = np.zeros((1,dim))
+        
+    x_last = x
+    v = np.zeros((1,dim))
+
+    a = global_alpha
+    g = None
+    
+    #Treshold
+    treshold = False
+
+    #Minimum Value of the function
+    min_x = x
+    min_value = fun(x)
+    
+    
+    #printing variables
+    count = 1
+    global_count = 1
+    
+    #Graphing variables
+    x_variables = [x]
+    function_values = [fun(x)]
+    
+    #Becomes true when the iterations are exceeded or when |G| < eps
+    while(not treshold):
+
+        #Calculates the necesarry advancing parameters
+        x_actual = x
+
+        v = x_actual + ((global_count - 1)/(global_count + 2))*(x_actual - x_last)
+
+        g = gradient(v)
+
+        a = alpha(x_actual, g, v)
+
+        G = (-1)*(x_actual - prox_fun(a,v - a*g))/a        
+        
+        x = x_actual + a*G
+
+        x_last = x_actual
+        
+        #Checks the the treshold
+        treshold = global_count > max_ite or np.linalg.norm(G)< eps
+
+        grad_last = g
+        
+        #Saves the current x
+        x_variables.append(x)
+        #Calculates value
+        temp_value = fun(x)
+        #Appends the calculated value
+        function_values.append(temp_value)
+        
+        if print_progress and count == print_counter:
+            print(temp_value)
+            print(min_value)
+            count = 0
+            
+        count = count + 1
+        global_count = global_count +1
+
+        #Refreshes the global minimum
+        if(temp_value < min_value):
+            min_x = x
+            min_value = temp_value 
+
+    return [min_x, min_value, x_variables, function_values, global_count, time.time() - start_time]
+#end of run_proximal_accelerated
     
 
 #Runs the ADMM method
@@ -358,8 +469,8 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         	nu_array[i] = run_gradient_descent(dim, 
                                                nu_functions[i], 
                                                nu_gradients[i],
-                                               alpha = lambda x,p,a: global_alpha,
-                                               #alpha = construct_apha_back(nu_functions[i],nu_gradients[i]),
+                                               #alpha = lambda x,p,a: global_alpha,
+                                               alpha = construct_apha_back(nu_functions[i], nu_gradients[i]),
                                                B_matrix = lambda B, x, x_prev: np.identity(dim), 
                                                eps = global_eps, 
                                                inverse = True, 
@@ -373,7 +484,7 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
                                        beta_fun, 
                                        beta_subgrad,
                                        alpha_fun_decs,
-                                       eps = 0.00001, 
+                                       eps = 0.0001, 
                                        initial = None,
                                        print_progress = False)[0]	
 
@@ -529,7 +640,17 @@ def subgradient_abs(x_single):
         return -1
 
     return 1/2    
-    #return random.uniform(-1, 1)
+#end of subgradient_abs
+
+#Declares the subgradient of the absolute value
+def subgradient_abs_stoc(x_single):
+    if x_single > 0:
+        return 1
+    if x_single < 0:
+        return -1
+ 
+    return random.uniform(-1, 1)
+#end of subgradient_abs_stoc        
     
            
 #Proximity function
@@ -556,25 +677,35 @@ def alpha_fun_cons(x,g,a):
 #declares the gloal decreasing alpha function
 def alpha_fun_decs(x,g,a):
     if a == None:
-        return 1/1000
+        return 1/alpha_step
     
-    return 1/(1/a + 100)
+    return 1/(1/a + alpha_step)
 #end of alpha_fun_dec
 
-def alpha_fun_back(x,g,a):
-    #For the first iteration
-    if(g is None):
-        return global_alpha
-
-    rho = 3/5
-    c = 3/5        
-    a = 1
-
-    while(H(x + a*g) > H(x) + c*a*np.dot(H_subgradient(x),g.T) ):
-        a = rho*a
+def alpha_fun_back_prox(x,g,a):    
     
-    return a
+    rho = 4/5
+    t = 1
+    G = (x - prox(t,x - t*g))/t
+
+    while(F(x - t*G) > F(x) - t*np.dot(G, g.T)[0,0] + (t/2)*(np.linalg.norm(G))**2):        
+        t = rho*t
+        G = (x - prox(t,x - t*g))/t
+    
+    return t
 # end of alpha_backtracking
+
+def alpha_fun_back_prox_acc(x,g,v):    
+    
+    rho = 4/5            
+    t = 1
+    
+    while(F(x) > F(v) + np.dot((x-v),g.T)[0,0] + (1/(2*t))*(np.linalg.norm(x-v))**2):
+        t = rho*t
+        
+    
+    return t 
+# end of alpha_backtracking_acc
 
 #Method that constructs the corresponding backtracking method given the function and
 # its gradient
@@ -588,7 +719,6 @@ def construct_apha_back(fun, fun_grad):
         rho = 3/5
         c = 3/5        
         a = 1
-
         while(fun(x + a*g) > fun(x) + c*a*np.dot(fun_grad(x),g.T) ):
             a = rho*a
         
@@ -638,10 +768,31 @@ def F_gradient(beta):
     return(first_term)
 #end of F_gradient
 
+def F_gradient_stoc(beta):
+    
+    index = random.sample(range(n), int(n*stochastic_percentage))
+
+    data_temp = data_x[index,:]
+
+    x_beta = np.dot(data_temp, beta.T)
+
+    #first constructs the vector y_i + exp()/(1 + exp)
+    #Constructs the gradient
+    temp_vec = (-1)*(data_y[index,:]).T + map(lambda k: exp_over_exp(k[0,0]), x_beta)
+    first_term = np.dot(temp_vec, data_temp)
+        
+    return(first_term)
+#end of F_gradient_stoc
+
 #Since f is differentiable, its subgradient is the gradient
 def F_subgradient(beta):
 	return F_gradient(beta)
-#end of F_subgrdient	
+#end of F_subgrdient
+
+#Since f is differentiable, its subgradient is the gradient
+def F_subgradient_stoc(beta):
+    return F_gradient_stoc(beta)
+#end of F_subgrdient    	
 
 #declares the function g(x) = lamnda*|beta|
 def G(beta):
@@ -652,6 +803,11 @@ def G(beta):
 def G_subgradient(x_vec):    
     return lambda_value*np.array(map(subgradient_abs, x_vec.T)).T
 #end of G_subgradient
+
+#Declares the subgradient of the fuction G stochastic
+def G_subgradient_stoc(x_vec):    
+    return lambda_value*np.array(map(subgradient_abs_stoc, x_vec.T)).T
+#end of G_subgradient_stoc
 
 #Declares the global function h, its subgradient 
 def H(beta):
@@ -666,16 +822,19 @@ def H_subgradient(beta):
 
 #Declares a stochastic subgradient for the dimentions of h(x)
 def H_subgradient_stoc(beta):       
-    return np.matrix(np.random.normal(size = beta.shape[1]))
+    return(F_gradient_stoc(beta) + G_subgradient_stoc(beta))
 #end of H_subgradient_stoc
 
 
 
-#result = run_subgradient_descent(dim_data -1, H, H_subgradient, alpha_fun_decs, 0.00000001, initial = None)
-#result = run_proximal_gradient_descent(dim_data-1, H, prox, F_gradient, alpha_fun_back, 0.00001, initial = None )
+#result = run_subgradient_descent(dim_data -1, H, H_subgradient, alpha_fun_decs, 0.000001, initial = None)
+#result = run_proximal(dim_data-1, H, prox, F_gradient, alpha_fun_back_prox, 0.0, initial = None )
+result = run_proximal_accelerated(dim_data-1, H, prox, F_gradient, alpha_fun_back_prox_acc, 0.00001, initial = None )
 
 
 
+
+'''
 def construct_f(i):
     def f_i(beta):
     	x_beta = np.dot(data_x[i,:],beta.T)[0,0]
@@ -694,14 +853,16 @@ def construct_grad_f(i):
 array_f = map(construct_f, range(n))
 grad_array_f = map(construct_grad_f, range(n))
 
-result = run_ADMM(dim_data - 1, array_f, grad_array_f, G, G_subgradient, alpha_fun_back, global_eps, initial = None)
+result = run_ADMM(dim_data - 1, array_f, grad_array_f, G, G_subgradient, alpha_fun_cons, global_eps, initial = None)
 
-
+'''
 
 print(result[1])
 print(result[4])
 
+
 '''
+
 x = np.zeros((1,3))
 x[0,0] = 1
 x[0,1] = 1
