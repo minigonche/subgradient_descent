@@ -54,11 +54,11 @@ lambda_value = 1
 #Global constant alpha
 global_alpha = 0.01
 #GLobal epsilon for treshold
-global_eps = 0.0001
+global_eps = 0.000001
 #Measure how many iterations to print pogress
-print_counter = 2
+print_counter = 20
 #maximimum iteration
-max_ite = 10000
+max_ite = 100000
 #global difference measure for gradient
 global_dif = 0.000001
 #Global alpha step
@@ -66,6 +66,8 @@ alpha_step = 500
 #Stochastic percentage to calculate th number of rows
 #to be included in the stochastic method
 stochastic_percentage = 0.8
+#Number of values that need to be smaller than eps to converge
+series = 100
 
 
 #----------------------------------------------------------------------
@@ -124,6 +126,8 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, p
     #printing variables
     count = 1
     global_count = 0
+    #The number of values than are smaller than eps
+    eps_average = 10
     
     #Graphing variables
     x_variables = [x]
@@ -142,9 +146,14 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, p
         a = alpha(x_actual, p, a)
         x = x_actual + a*p
         x_last = x_actual
+
+        if np.linalg.norm(x - x_last) < eps:
+            eps_count = eps_count +1
+        else:
+            eps_count = 0    
         
         #Checks the the treshold
-        treshold = global_count > max_ite or np.linalg.norm(x - x_last) < eps
+        treshold = global_count > max_ite or eps_count > series
         
         if print_progress and count == print_counter:
             print(temp_value)
@@ -215,6 +224,8 @@ def run_proximal(dim, fun, prox_fun, gradient, alpha, eps, initial = None , prin
     #printing variables
     count = 1
     global_count = 0
+    #The number of values than are smaller than eps
+    eps_count = 0
     
     #Graphing variables
     x_variables = [x]
@@ -236,8 +247,13 @@ def run_proximal(dim, fun, prox_fun, gradient, alpha, eps, initial = None , prin
         x = x_actual + a*G
         x_last = x_actual
         
+        if np.linalg.norm(x - x_last) < eps:
+            eps_count = eps_count +1
+        else:
+            eps_count = 0    
+        
         #Checks the the treshold
-        treshold = global_count > max_ite or np.linalg.norm(G)< eps
+        treshold = global_count > max_ite or np.linalg.norm(G)< eps or eps_count > series
 
         grad_last = g
         
@@ -311,7 +327,9 @@ def run_proximal_accelerated(dim, fun, prox_fun, gradient, alpha, eps, initial =
     
     #printing variables
     count = 1
-    global_count = 1
+    global_count = 0
+    #The number of values than are smaller than eps
+    eps_count = 0
     
     #Graphing variables
     x_variables = [x]
@@ -334,9 +352,15 @@ def run_proximal_accelerated(dim, fun, prox_fun, gradient, alpha, eps, initial =
         x = x_actual + a*G
 
         x_last = x_actual
+
+        if np.linalg.norm(x - x_last) < eps:
+            eps_count = eps_count +1
+        else:
+            eps_count = 0    
         
         #Checks the the treshold
-        treshold = global_count > max_ite or np.linalg.norm(G)< eps
+        treshold = global_count > max_ite or np.linalg.norm(G)< eps or eps_count > series
+
 
         grad_last = g
         
@@ -658,10 +682,10 @@ def subgradient_abs_stoc(x_single):
 def prox(t,x):
     
     def coordinate_prox(x_i):
-        if x_i > t:
-            return x_i - t
-        if x_i < - t:
-            return x_i + t
+        if x_i > lambda_value*t:
+            return x_i - lambda_value*t
+        if x_i < - lambda_value*t:
+            return x_i + lambda_value*t
             
         return 0    
     
@@ -716,7 +740,7 @@ def construct_apha_back(fun, fun_grad):
         if(g is None):
             return global_alpha
 
-        rho = 3/5
+        rho = 4/5
         c = 3/5        
         a = 1
         while(fun(x + a*g) > fun(x) + c*a*np.dot(fun_grad(x),g.T) ):
@@ -826,39 +850,87 @@ def H_subgradient_stoc(beta):
 #end of H_subgradient_stoc
 
 
+#----------------------------------------------------------------------
+#-------------------------- Excecutions -------------------------------
+#----------------------------------------------------------------------
 
-#result = run_subgradient_descent(dim_data -1, H, H_subgradient, alpha_fun_decs, 0.000001, initial = None)
-#result = run_proximal(dim_data-1, H, prox, F_gradient, alpha_fun_back_prox, 0.0, initial = None )
-result = run_proximal_accelerated(dim_data-1, H, prox, F_gradient, alpha_fun_back_prox_acc, 0.00001, initial = None )
+#Defines the excecutions variables for the subgradient procedure
+def excecute_subgradient(print_progress = True):
+    return run_subgradient_descent(dim_data -1, 
+                                   H, 
+                                   H_subgradient, 
+                                   alpha_fun_decs, 
+                                   global_eps, 
+                                   initial = None, 
+                                   print_progress = print_progress)
+#end of excecute_subgradient
 
+#Defines the excecutions varaibles for the stochastic subgradient procedure
+def excecute_subgradient_stoc(print_progress = True):
+    return run_subgradient_descent(dim_data -1, 
+                                   H,
+                                   H_subgradient_stoc, 
+                                   alpha_fun_decs, 
+                                   global_eps, 
+                                   initial = None, 
+                                   print_progress = print_progress)
+#edn of excecute_subgradient_stoc
 
+#Defines the excecution variables for the proximal gradient procedure 
+def excecute_proximal(print_progress = True):
+    return run_proximal(dim_data-1, 
+                        H, p
+                        rox, 
+                        F_gradient, 
+                        alpha_fun_back_prox, 
+                        global_eps, 
+                        initial = None , 
+                        print_progress = print_progress)
+#end of excecute_proximal    
 
+#Defines the excecution variables for the proximal accelerated procedure
+def excecute_proximal_accelerated(print_progress = True):
+    return run_proximal_accelerated(dim_data-1, 
+                                    H, 
+                                    prox, 
+                                    F_gradient, 
+                                    alpha_fun_back_prox_acc, 
+                                    global_eps, 
+                                    initial = None , 
+                                    print_progress = print_progress)
+#end of excecute_proximal_accelerated    
 
-'''
-def construct_f(i):
-    def f_i(beta):
-    	x_beta = np.dot(data_x[i,:],beta.T)[0,0]
-    	return (-1)*data_y[i,0]*x_beta + log_exp(x_beta)
+#Defines the excecution variales for the proximal ADMM procedure
+def excecute_ADDM(print_progress = True):
 
-    return f_i	
+    def construct_f(i):
+        def f_i(beta):
+            x_beta = np.dot(data_x[i,:],beta.T)[0,0]
+            return (-1)*data_y[i,0]*x_beta + log_exp(x_beta)
 
-    array.append(f_i)
-def construct_grad_f(i):
-    def subgrad_f_i(beta):
-    	x_beta = np.dot(data_x[i,:],beta.T)[0,0]
-    	return ((-1)*data_y[i,0] + exp_over_exp(x_beta))*data_x[i,:]
+        return f_i  
 
-    return subgrad_f_i	
+    
+    def construct_grad_f(i):
+        def subgrad_f_i(beta):
+            x_beta = np.dot(data_x[i,:],beta.T)[0,0]
+            return ((-1)*data_y[i,0] + exp_over_exp(x_beta))*data_x[i,:]
 
-array_f = map(construct_f, range(n))
-grad_array_f = map(construct_grad_f, range(n))
+        return subgrad_f_i  
 
-result = run_ADMM(dim_data - 1, array_f, grad_array_f, G, G_subgradient, alpha_fun_cons, global_eps, initial = None)
+    array_f = map(construct_f, range(n))
+    grad_array_f = map(construct_grad_f, range(n))
 
-'''
-
-print(result[1])
-print(result[4])
+    return  run_ADMM(dim_data - 1, 
+                     array_f, 
+                     grad_array_f, 
+                     G, 
+                     G_subgradient, 
+                     alpha_fun_cons, 
+                     global_eps, 
+                     initial = None, 
+                     print_progress = print_progress)
+#end of excecute_ADDM
 
 
 '''
@@ -871,6 +943,133 @@ x[0,2] = 1
 print F_gradient(x)
 
 '''
+
+
+#----------------------------------------------------------------------
+#-------------------------- Graphing Script ---------------------------
+#---------------------------------------------------------------------- 
+
+
+
+#Runs the main experiment for each method and the graphs it
+print 'Start Subgradient '
+r_sub =  excecute_subgradient()
+print('Ok')
+print('Numero de Iteraciones: ' + str(r_sub[4]))
+print('Tiempo: ' + str(r_sub[5]))
+print('Minimo: ' + str(r_sub[1]))
+print('------------------------------')
+print('')
+print('------------------------------')
+print('Start Stocastic Subgradient')
+r_stoc =  excecute_subgradient_stoc()
+print('Ok')
+print('Numero de Iteraciones: ' + str(r_stoc[4]))
+print('Tiempo: ' + str(r_stoc[5]))
+print('Minimo: ' + str(r_stoc[1]))
+print('------------------------------')
+print('')
+print('------------------------------')
+print('Start Proximal')
+r_prox =  excecute_proximal()
+print('Ok')
+print('Numero de Iteraciones: ' + str(r_prox[4]))
+print('Tiempo: ' + str(r_prox[5]))
+print('Minimo: ' + str(r_prox[1]))
+print('------------------------------')
+print('')
+print('------------------------------')
+'''
+print('Start Proximal Accelerated')
+r_acc =  excecute_proximal_accelerated()
+print('Ok')
+print('Numero de Iteraciones: ' + str(r_acc[4]))
+print('Tiempo: ' + str(r_acc[5]))
+print('Minimo: ' + str(r_acc[1]))
+print('------------------------------')
+print('')
+print('------------------------------')
+'''
+
+#Plots the results
+#plot_log(resultado[3], resultado[1])
+#Graphs the plot for log
+dif = map(lambda y: math.log(y - r_sub[1] ),r_sub[3])
+trace_1 = go.Scatter(x = range(len(dif)), y =  dif)
+dif = map(lambda y: math.log(y - r_stoc[1] ),r_stoc[3])
+trace_2 = go.Scatter(x = range(len(dif)), y =  dif)
+dif = map(lambda y: math.log(y - r_prox[1] ),r_prox[3])
+trace_3 = go.Scatter(x = range(len(dif)), y =  dif)
+
+#dif = map(lambda y: math.log(y - r_acc[1] ),r_acc[3])
+#trace_4 = go.Scatter(x = range(len(dif)), y =  dif)
+
+#Export graph
+plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+
+print('Grafica logaritmica hecha')
+
+
+#Starts the experient for different lambda
+
+res_sub = []
+res_stoc = []
+res_prox = []
+res_acc = []
+
+for l in ([0.5] + range(1,101,9)):
+    lambda_value = l
+    r_sub =  excecute_subgradient(print_progress = False)
+    res_sub.append(r_sub[0],[r_sub[1],r_sub[4],r_sub[5]])
+
+    r_stoc =  excecute_subgradient_stoc(print_progress = False)
+    res_stoc.append(r_stoc[0],[r_stoc[1],r_stoc[4],r_stoc[5]])
+
+    r_prox =  excecute_proximal(print_progress = False)
+    res_prox.append(r_prox[0],[r_prox[1],r_prox[4],r_prox[5]])
+
+    #r_acc =  excecute_proximal_accelerated(print_progress = False)
+    #res_acc.append(r_acc[0],[r_acc[1],r_acc[4],r_acc[5]])
+
+    print ('Finished: ' + str(l))
+
+#Now plots the different graphs
+
+
+
+
+
+tam = 35
+trace_1 = go.Scatter( x = [r_const[4]],
+                    y = [r_const[5]],
+                    marker = dict(color = ['red'], 
+                                  size = [tam]), mode = 'markers')
+                                  
+trace_2 = go.Scatter( x = [r_const_b[4]],
+                    y = [r_const_b[5]],
+                    marker = dict(color = ['green'], 
+                                  size = [tam]), mode = 'markers')
+                                  
+trace_3 = go.Scatter( x = [r_newton[4]],
+                    y = [r_newton[5]],
+                    marker = dict(color = ['blue'], 
+                                  size = [tam]), mode = 'markers')
+trace_4 = go.Scatter( x = [r_quasi[4]],
+                    y = [r_quasi[5]],
+                    marker = dict(color = ['orange'], 
+                                  size = [tam],), mode = 'markers')                                  
+plot_url = py.plot([trace_1,trace_2,trace_3,trace_4], auto_open=False) 
+print('Grafica tiempo vs iteraciones')
+    
+sys.exit('Ok')
+'''
+
+
+
+
+
+
+
 
 
     
