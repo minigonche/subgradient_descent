@@ -544,7 +544,7 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         function_values.append(min_value)
 
         #Checks the the treshold
-        treshold = global_count > max_ite or min_value > last_min
+        treshold = global_count > max_ite or math.fabs(min_value - last_min) < 0.001
 
     x_final = x
     value_final = sum(map(lambda f: f(x),f_array)) + g(x)    
@@ -1022,7 +1022,7 @@ x[0,2] = 1
 
 print F_gradient(x)
 
-'''
+
 
 resul = excecute_ADDM()
 
@@ -1030,11 +1030,27 @@ print resul[1]
 print resul[4]
 print resul[5]
 
+'''
 
 #----------------------------------------------------------------------
 #-------------------------- Graphing Script ---------------------------
 #---------------------------------------------------------------------- 
 
+'''
+#Corre addm
+r_ADMM =  excecute_ADDM(True)
+print('Ok')
+print('Numero de Iteraciones: ' + str(r_ADMM[4]))
+print('Tiempo: ' + str(r_ADMM[5]))
+print('Minimo: ' + str(r_ADMM[1]))
+print('------------------------------')
+
+dif = map(lambda y: math.log(math.fabs(y - r_ADMM[1])),(t for t in r_ADMM[3] if t > r_ADMM[1]))
+trace_1 = go.Scatter(x = range(len(dif)), y =  dif)
+plot_url = py.plot([trace_1], auto_open=False)
+
+
+sys.exit('Ok')
 '''
 
 #Runs the main experiment for each method and the graphs it
@@ -1067,7 +1083,7 @@ print('')
 print('------------------------------')
 
 
-
+'''
 
 print('Start Proximal Accelerated')
 r_acc =  excecute_proximal_accelerated(False)
@@ -1079,7 +1095,7 @@ print('------------------------------')
 print('')
 print('------------------------------')
 
-
+'''
 
 #Plots the results
 #plot_log(resultado[3], resultado[1])
@@ -1108,7 +1124,7 @@ res_stoc = []
 res_prox = []
 res_acc = []
 
-lambdas = [0.5] + [1] #+ range(1,101,40) 
+lambdas = [0.5] + range(1,1001,73) 
 
 for l in lambdas:
     lambda_value = l
@@ -1160,4 +1176,13 @@ trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_prox))
 plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
 print 'Grafica Tiempo requerido'
 
-'''
+
+
+
+
+
+
+
+
+
+
