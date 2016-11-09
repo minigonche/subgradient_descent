@@ -34,7 +34,7 @@ py.sign_in('minigonche', '8cjqqmkb4o')
 
 #Imports the data values stored in 'data/Datos.csv' for the corresponding
 # x_i and y_i
-'''
+
 
 data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
 dim_data = data_x.shape[1]
@@ -49,7 +49,7 @@ data_y = np.matrix([[1],[0],[1]])
 dim_data = 3
 n = 3
 
-
+'''
 
 #lambda value
 lambda_value = 1
