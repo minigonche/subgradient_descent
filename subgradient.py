@@ -17,6 +17,9 @@ import math as math
 import sys
 #For time measurement
 import time
+#For parallelism
+from multiprocessing import Pool
+
 
 #For Graphing. The methods export the grapgics on plotly, the user only needs
 # to enter his/her username and api-key
@@ -31,7 +34,7 @@ py.sign_in('minigonche', '8cjqqmkb4o')
 
 #Imports the data values stored in 'data/Datos.csv' for the corresponding
 # x_i and y_i
-
+'''
 
 data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
 dim_data = data_x.shape[1]
@@ -46,7 +49,7 @@ data_y = np.matrix([[1],[0],[1]])
 dim_data = 3
 n = 3
 
-'''
+
 
 #lambda value
 lambda_value = 1
@@ -56,7 +59,7 @@ global_alpha = 0.01
 #GLobal epsilon for treshold
 global_eps = 0.000001
 #Measure how many iterations to print pogress
-print_counter = 20
+print_counter = 2
 #maximimum iteration
 max_ite = 100000
 #global difference measure for gradient
@@ -65,7 +68,7 @@ global_dif = 0.000001
 alpha_step = 500
 #Stochastic percentage to calculate th number of rows
 #to be included in the stochastic method
-stochastic_percentage = 0.8
+stochastic_percentage = 0.6
 #Number of values that need to be smaller than eps to converge
 series = 100
 
@@ -130,8 +133,8 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, p
     eps_average = 10
     
     #Graphing variables
-    x_variables = [x]
-    function_values = [fun(x)]
+    x_variables = [min_x]
+    function_values = [min_value]
     
     
     #Becomes true when the iterations are exceeded
@@ -164,16 +167,17 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, p
         global_count = global_count +1
         subgrad_last = g
         
-        #Saves the current x
-        x_variables.append(x)
         #Calcultaes the value
         temp_value = fun(x)
-        #Appends the calculated value
-        function_values.append(temp_value)
+
         #Refreshes the global minimum
         if(temp_value < min_value):
             min_x = x
-            min_value = temp_value            
+            min_value = temp_value
+
+        #Saves the current minimum value
+        x_variables.append(min_x)                
+        function_values.append(min_value)                
         
     
     return [min_x, min_value, x_variables, function_values, global_count, time.time() - start_time]
@@ -390,7 +394,7 @@ def run_proximal_accelerated(dim, fun, prox_fun, gradient, alpha, eps, initial =
 
 #Runs the ADMM method
 #Minimizes a function of the form sum(f)+ g
-def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initial = None, print_progress = True):
+def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initial = None, print_progress = True, parallel = False):
     """
         Parameters
         ----------
@@ -431,9 +435,14 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
     
     a = None    
     beta = np.zeros((1,dim))
-    nu = np.zeros((1,dim))    
+    nu = np.zeros((1,dim))
     mu_array = n*[np.zeros((1,dim))]
     nu_array = n*[np.zeros((1,dim))]
+
+    #The last minimum value found
+    last_min = np.inf
+    #the current minimum
+    min_value = np.inf
     
     #Treshold
     treshold = False
@@ -455,8 +464,7 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
 
         return f_i
 
-    #Fills the array with the corresponding functions    
-    nu_functions = []    
+    #Fills the array with the corresponding functions         
     nu_functions = map(get_f, range(n))    
     
     #Declares teh method that return each individual gradient    
@@ -469,7 +477,10 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         return gradient_i
 
     #fills the array with the corresponding gradients    
-    nu_gradients = map(get_gradient_f, range(n))     
+    nu_gradients = map(get_gradient_f, range(n))
+
+    #Constructs the arguments for the parallel case
+    parallel_args = map(lambda i: [get_f(i),get_gradient_f(i)], range(n))    
 
     #declares the beta function that will also be needed to minimized
     def beta_fun(x):
@@ -483,59 +494,57 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         second_term = (n*a)*(x - nu - mu )
         return first_term + second_term
 
-
     #Becomes true when the iterations are exceeded
     while(not treshold):
 
+        last_nu = nu
     	a = alpha(mu,beta,a)
         #Calculates every nu
-        for i in range(n):
-        	nu_array[i] = run_gradient_descent(dim, 
-                                               nu_functions[i], 
-                                               nu_gradients[i],
-                                               #alpha = lambda x,p,a: global_alpha,
-                                               alpha = construct_apha_back(nu_functions[i], nu_gradients[i]),
-                                               B_matrix = lambda B, x, x_prev: np.identity(dim), 
-                                               eps = global_eps, 
-                                               inverse = True, 
-                                               initial = None,
-                                               print_progress = False)[0]
+        
+        if parallel:
+            #Parallel            
+            pool = Pool(n)
+            nu_array = pool.map(parallel_min, map(lambda i:[dim,i,a,beta,mu_array] ,range(n)))
+            pool.close()
+            
+
+        else:        
+            #Linear
+            for i in range(n):
+            	nu_array[i] = parallel_min([dim,i,a,beta,mu_array])
+
+
         #Finds \hat nu_{k+1}       
         nu = sum(nu_array)/n
         
         #Finds beta_{k+1}
-        beta = run_subgradient_descent(dim,
-                                       beta_fun, 
-                                       beta_subgrad,
-                                       alpha_fun_decs,
-                                       eps = 0.0001, 
-                                       initial = None,
-                                       print_progress = False)[0]	
+        beta = prox(1/(n*a),nu + mu)
 
         mu_array = map(lambda i: mu_array[i] + nu_array[i] - beta, range(n))
 
         #Finds \hat mu_{k+1}
         mu = sum(mu_array)/n
-
-        #Checks the the treshold
-        treshold = global_count > max_ite
         
         if print_progress and count == print_counter:
-            print(temp_value)
+            print(min_value)
             count = 0
         
         count = count + 1
         global_count = global_count +1
         subgrad_last = g
+
         
         x = nu
-
+        last_min = min_value
         #Saves the current x
         x_variables.append(x)
         #Calcultaes the value
-        temp_value = sum(map(lambda f: f(x),f_array)) + g(x)
+        min_value = sum(map(lambda f: f(x),f_array)) + g(x)
         #Appends the calculated value
-        function_values.append(temp_value)
+        function_values.append(min_value)
+
+        #Checks the the treshold
+        treshold = global_count > max_ite or min_value > last_min
 
     x_final = x
     value_final = sum(map(lambda f: f(x),f_array)) + g(x)    
@@ -654,6 +663,76 @@ def run_gradient_descent(dim, fun, gradient, alpha, B_matrix, eps, inverse = Tru
 #------------------------ Support Functions ---------------------------
 #----------------------------------------------------------------------
 
+#Declares the global method for the parallel procedure.
+#This method should only acces global variables and should
+#not invoke any functions
+
+def parallel_min(args):
+
+    #Variables for the iteration
+    dim = args[0]
+    i = args[1]
+    a_k = args[2]
+    beta = args[3]    
+    mu_array = args[4]
+
+
+    #Variables for the gradient descent
+    B = np.identity(dim)
+    eps = 0.01
+    a_grad = 0.0001
+
+
+
+
+    #Excecutes gradient descent
+    eta = np.zeros((1,dim))        
+    alpha = a_grad    
+    
+    #Treshold
+    treshold = False
+        
+    
+    #Becomes true when |\nabla f(x)| < eps
+    while(not treshold):
+        
+        #calculates the gradient
+        x_eta = np.dot(data_x[i,:],eta.T)[0,0]
+
+        first_term =  ((-1)*data_y[i,0] + exp_over_exp(x_eta))*data_x[i,:]        
+        second_term = a_k*(eta - beta + mu_array[i] )            
+        
+        grad = first_term + second_term
+
+        #calculates alpha using backtracking        
+        rho = 4/5
+        c = 3/5        
+        alpha = 1
+
+        back_treshold = True
+
+        while(back_treshold):
+            #regreshes alpha
+            alpha = rho*alpha
+            v_left = eta + alpha*(-1)*grad
+            x_left = np.dot(data_x[i,:],v_left.T)[0,0]    
+            left = (-1)*data_y[i,0]*x_left + log_exp(x_left) + (a_k/2)*(np.linalg.norm(v_left - beta + mu_array[i] )**2)
+
+            right =   (-1)*data_y[i,0]*x_eta + log_exp(x_eta) + (a_k/2)*(np.linalg.norm(eta - beta + mu_array[i] )**2)  
+
+            back_treshold = left > right + c*alpha*np.dot(grad,(-1)*grad.T)
+
+
+
+        eta = eta + alpha*(-1)*grad
+        
+        #Checks the the treshold
+        treshold = np.linalg.norm(grad) < eps 
+                
+    return eta    
+    
+    
+
 
 
 #Declares the subgradient of the absolute value
@@ -708,7 +787,7 @@ def alpha_fun_decs(x,g,a):
 
 def alpha_fun_back_prox(x,g,a):    
     
-    rho = 4/5
+    rho = 1/2
     t = 1
     G = (x - prox(t,x - t*g))/t
 
@@ -879,8 +958,8 @@ def excecute_subgradient_stoc(print_progress = True):
 #Defines the excecution variables for the proximal gradient procedure 
 def excecute_proximal(print_progress = True):
     return run_proximal(dim_data-1, 
-                        H, p
-                        rox, 
+                        H, 
+                        prox, 
                         F_gradient, 
                         alpha_fun_back_prox, 
                         global_eps, 
@@ -929,7 +1008,8 @@ def excecute_ADDM(print_progress = True):
                      alpha_fun_cons, 
                      global_eps, 
                      initial = None, 
-                     print_progress = print_progress)
+                     print_progress = print_progress,
+                     parallel = False)
 #end of excecute_ADDM
 
 
@@ -944,16 +1024,22 @@ print F_gradient(x)
 
 '''
 
+resul = excecute_ADDM()
+
+print resul[1]
+print resul[4]
+print resul[5]
+
 
 #----------------------------------------------------------------------
 #-------------------------- Graphing Script ---------------------------
 #---------------------------------------------------------------------- 
 
-
+'''
 
 #Runs the main experiment for each method and the graphs it
 print 'Start Subgradient '
-r_sub =  excecute_subgradient()
+r_sub =  excecute_subgradient(False)
 print('Ok')
 print('Numero de Iteraciones: ' + str(r_sub[4]))
 print('Tiempo: ' + str(r_sub[5]))
@@ -962,7 +1048,7 @@ print('------------------------------')
 print('')
 print('------------------------------')
 print('Start Stocastic Subgradient')
-r_stoc =  excecute_subgradient_stoc()
+r_stoc =  excecute_subgradient_stoc(False)
 print('Ok')
 print('Numero de Iteraciones: ' + str(r_stoc[4]))
 print('Tiempo: ' + str(r_stoc[5]))
@@ -971,7 +1057,7 @@ print('------------------------------')
 print('')
 print('------------------------------')
 print('Start Proximal')
-r_prox =  excecute_proximal()
+r_prox =  excecute_proximal(False)
 print('Ok')
 print('Numero de Iteraciones: ' + str(r_prox[4]))
 print('Tiempo: ' + str(r_prox[5]))
@@ -979,9 +1065,12 @@ print('Minimo: ' + str(r_prox[1]))
 print('------------------------------')
 print('')
 print('------------------------------')
-'''
+
+
+
+
 print('Start Proximal Accelerated')
-r_acc =  excecute_proximal_accelerated()
+r_acc =  excecute_proximal_accelerated(False)
 print('Ok')
 print('Numero de Iteraciones: ' + str(r_acc[4]))
 print('Tiempo: ' + str(r_acc[5]))
@@ -989,25 +1078,27 @@ print('Minimo: ' + str(r_acc[1]))
 print('------------------------------')
 print('')
 print('------------------------------')
-'''
+
+
 
 #Plots the results
 #plot_log(resultado[3], resultado[1])
 #Graphs the plot for log
-dif = map(lambda y: math.log(y - r_sub[1] ),r_sub[3])
+dif = map(lambda y: math.log(math.fabs(y - r_sub[1])),(t for t in r_sub[3] if t > r_sub[1]))
 trace_1 = go.Scatter(x = range(len(dif)), y =  dif)
-dif = map(lambda y: math.log(y - r_stoc[1] ),r_stoc[3])
+dif = map(lambda y: math.log(math.fabs(y - r_stoc[1])), (t for t in r_stoc[3] if t > r_stoc[1]))
 trace_2 = go.Scatter(x = range(len(dif)), y =  dif)
-dif = map(lambda y: math.log(y - r_prox[1] ),r_prox[3])
+dif = map(lambda y: math.log(math.fabs(y - r_prox[1])),(t for t in r_prox[3] if t > r_prox[1]))
 trace_3 = go.Scatter(x = range(len(dif)), y =  dif)
 
-#dif = map(lambda y: math.log(y - r_acc[1] ),r_acc[3])
+#dif = map(lambda y: math.log(y - r_acc[1] ),(t for t in r_acc[3] if t > r_acc[1]))
 #trace_4 = go.Scatter(x = range(len(dif)), y =  dif)
 
 #Export graph
 plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
 
 print('Grafica logaritmica hecha')
+
 
 
 #Starts the experient for different lambda
@@ -1017,16 +1108,18 @@ res_stoc = []
 res_prox = []
 res_acc = []
 
-for l in ([0.5] + range(1,101,9)):
+lambdas = [0.5] + [1] #+ range(1,101,40) 
+
+for l in lambdas:
     lambda_value = l
     r_sub =  excecute_subgradient(print_progress = False)
-    res_sub.append(r_sub[0],[r_sub[1],r_sub[4],r_sub[5]])
+    res_sub.append([r_sub[0],r_sub[1],r_sub[4],r_sub[5]])
 
     r_stoc =  excecute_subgradient_stoc(print_progress = False)
-    res_stoc.append(r_stoc[0],[r_stoc[1],r_stoc[4],r_stoc[5]])
+    res_stoc.append([r_stoc[0],r_stoc[1],r_stoc[4],r_stoc[5]])
 
     r_prox =  excecute_proximal(print_progress = False)
-    res_prox.append(r_prox[0],[r_prox[1],r_prox[4],r_prox[5]])
+    res_prox.append([r_prox[0],r_prox[1],r_prox[4],r_prox[5]])
 
     #r_acc =  excecute_proximal_accelerated(print_progress = False)
     #res_acc.append(r_acc[0],[r_acc[1],r_acc[4],r_acc[5]])
@@ -1034,42 +1127,37 @@ for l in ([0.5] + range(1,101,9)):
     print ('Finished: ' + str(l))
 
 #Now plots the different graphs
+#Norm of the B^*
+trace_1 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg.norm(w[0].T,1), res_sub))
+trace_2 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg.norm(w[0].T,1), res_stoc))
+trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg.norm(w[0].T,1), res_prox))
+#trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg(w[0].T,1), res_acc))
+plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+print 'Grafica Tamanho de Beta'
+
+#Minimum reached
+trace_1 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_sub))
+trace_2 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_stoc))
+trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_prox))
+#trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_acc))
+plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+print 'Grafica Minimo Alcanzado'
+
+#Number of Iterations
+trace_1 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_sub))
+trace_2 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_stoc))
+trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_prox))
+#trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_acc))
+plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+print 'Grafica Numero de Iteraciones'
 
 
+#Time required
+trace_1 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_sub))
+trace_2 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_stoc))
+trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_prox))
+#trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_acc))
+plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+print 'Grafica Tiempo requerido'
 
-
-
-tam = 35
-trace_1 = go.Scatter( x = [r_const[4]],
-                    y = [r_const[5]],
-                    marker = dict(color = ['red'], 
-                                  size = [tam]), mode = 'markers')
-                                  
-trace_2 = go.Scatter( x = [r_const_b[4]],
-                    y = [r_const_b[5]],
-                    marker = dict(color = ['green'], 
-                                  size = [tam]), mode = 'markers')
-                                  
-trace_3 = go.Scatter( x = [r_newton[4]],
-                    y = [r_newton[5]],
-                    marker = dict(color = ['blue'], 
-                                  size = [tam]), mode = 'markers')
-trace_4 = go.Scatter( x = [r_quasi[4]],
-                    y = [r_quasi[5]],
-                    marker = dict(color = ['orange'], 
-                                  size = [tam],), mode = 'markers')                                  
-plot_url = py.plot([trace_1,trace_2,trace_3,trace_4], auto_open=False) 
-print('Grafica tiempo vs iteraciones')
-    
-sys.exit('Ok')
 '''
-
-
-
-
-
-
-
-
-
-    
