@@ -42,6 +42,12 @@ data_y = data_x[:,data_x.shape[1] - 1]
 data_x = data_x[:,0:(data_x.shape[1] - 1)]
 n = data_x.shape[0]
 
+max_c = np.amax(data_x,0)
+for i in range(dim_data-1):
+    data_x[:,i] = (1/max_c[0,i])*data_x[:,i]
+
+
+
 '''
 
 data_x = np.matrix([[1,2],[3,4],[5,6]])
@@ -55,22 +61,24 @@ n = 3
 lambda_value = 1
 
 #Global constant alpha
-global_alpha = 0.01
+global_alpha = 0.001
 #GLobal epsilon for treshold
-global_eps = 0.000001
+global_eps = 0.001
 #Measure how many iterations to print pogress
-print_counter = 2
+print_counter = 3
 #maximimum iteration
-max_ite = 100000
+max_ite = 30000
 #global difference measure for gradient
 global_dif = 0.000001
 #Global alpha step
-alpha_step = 500
+alpha_step = 1
 #Stochastic percentage to calculate th number of rows
 #to be included in the stochastic method
 stochastic_percentage = 0.6
 #Number of values that need to be smaller than eps to converge
-series = 100
+series = 25
+#Max_unaltered
+max_unaltered = 300
 
 
 #----------------------------------------------------------------------
@@ -121,7 +129,7 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, p
     
     #Minimum Value of the function
     min_x = x
-    min_value = fun(x)
+    min_value = np.inf  
     
     #Treshold
     treshold = False
@@ -130,11 +138,13 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, p
     count = 1
     global_count = 0
     #The number of values than are smaller than eps
-    eps_average = 10
+    eps_count = 0
     
     #Graphing variables
     x_variables = [min_x]
     function_values = [min_value]
+
+    unaletered = 0
     
     
     #Becomes true when the iterations are exceeded
@@ -149,32 +159,39 @@ def run_subgradient_descent(dim, fun, subgradient, alpha, eps, initial = None, p
         a = alpha(x_actual, p, a)
         x = x_actual + a*p
         x_last = x_actual
-
-        if np.linalg.norm(x - x_last) < eps:
-            eps_count = eps_count +1
-        else:
-            eps_count = 0    
-        
-        #Checks the the treshold
-        treshold = global_count > max_ite or eps_count > series
         
         if print_progress and count == print_counter:
             print(temp_value)
             print(min_value)
+            print eps_count
+            print unaletered
             count = 0
         
         count = count + 1
         global_count = global_count +1
         subgrad_last = g
         
+
         #Calcultaes the value
-        temp_value = fun(x)
+        temp_value = fun(x)        
+        
+
 
         #Refreshes the global minimum
         if(temp_value < min_value):
+            unaletered = 0
+            if np.linalg.norm(temp_value - min_value) < eps:
+                eps_count = eps_count +1
+            else:
+                eps_count = 0
+
             min_x = x
             min_value = temp_value
+        else:
+            unaletered = unaletered +1     
 
+        #Checks the the treshold
+        treshold = global_count > max_ite or eps_count > series  or unaletered > max_unaltered  
         #Saves the current minimum value
         x_variables.append(min_x)                
         function_values.append(min_value)                
@@ -234,6 +251,7 @@ def run_proximal(dim, fun, prox_fun, gradient, alpha, eps, initial = None , prin
     #Graphing variables
     x_variables = [x]
     function_values = [fun(x)]
+    temp_value = fun(x)
     
     #Becomes true when the iterations are exceeded or when |G| < eps
     while(not treshold):
@@ -251,10 +269,10 @@ def run_proximal(dim, fun, prox_fun, gradient, alpha, eps, initial = None , prin
         x = x_actual + a*G
         x_last = x_actual
         
-        if np.linalg.norm(x - x_last) < eps:
+        if np.linalg.norm(temp_value - fun(x)) < eps:
             eps_count = eps_count +1
         else:
-            eps_count = 0    
+            eps_count = 0            
         
         #Checks the the treshold
         treshold = global_count > max_ite or np.linalg.norm(G)< eps or eps_count > series
@@ -270,6 +288,7 @@ def run_proximal(dim, fun, prox_fun, gradient, alpha, eps, initial = None , prin
         
         if print_progress and count == print_counter:
             print(temp_value)
+            print eps_count
             count = 0
             
         count = count + 1
@@ -316,7 +335,7 @@ def run_proximal_accelerated(dim, fun, prox_fun, gradient, alpha, eps, initial =
         x = np.zeros((1,dim))
         
     x_last = x
-    v = np.zeros((1,dim))
+    v = x
 
     a = global_alpha
     g = None
@@ -331,42 +350,36 @@ def run_proximal_accelerated(dim, fun, prox_fun, gradient, alpha, eps, initial =
     
     #printing variables
     count = 1
-    global_count = 0
+    global_count = 1
     #The number of values than are smaller than eps
     eps_count = 0
     
     #Graphing variables
     x_variables = [x]
     function_values = [fun(x)]
+    temp_value = fun(x)
     
     #Becomes true when the iterations are exceeded or when |G| < eps
     while(not treshold):
 
-        #Calculates the necesarry advancing parameters
-        x_actual = x
-
-        v = x_actual + ((global_count - 1)/(global_count + 2))*(x_actual - x_last)
-
+                
         g = gradient(v)
 
-        a = alpha(x_actual, g, v)
-
-        G = (-1)*(x_actual - prox_fun(a,v - a*g))/a        
+        a = alpha(x, g, v)     
         
-        x = x_actual + a*G
+        x = prox_fun(a,v - a*g)        
 
-        x_last = x_actual
+        v = x + ((global_count - 1)/(global_count + 2))*(x - x_last)
 
-        if np.linalg.norm(x - x_last) < eps:
+        if np.linalg.norm(temp_value - fun(x)) < eps:
             eps_count = eps_count +1
         else:
-            eps_count = 0    
-        
+            eps_count = 0  
+
         #Checks the the treshold
-        treshold = global_count > max_ite or np.linalg.norm(G)< eps or eps_count > series
+        treshold = global_count > max_ite or eps_count > series
 
 
-        grad_last = g
         
         #Saves the current x
         x_variables.append(x)
@@ -378,6 +391,7 @@ def run_proximal_accelerated(dim, fun, prox_fun, gradient, alpha, eps, initial =
         if print_progress and count == print_counter:
             print(temp_value)
             print(min_value)
+            print eps_count
             count = 0
             
         count = count + 1
@@ -386,7 +400,9 @@ def run_proximal_accelerated(dim, fun, prox_fun, gradient, alpha, eps, initial =
         #Refreshes the global minimum
         if(temp_value < min_value):
             min_x = x
-            min_value = temp_value 
+            min_value = temp_value
+
+        x_last = x      
 
     return [min_x, min_value, x_variables, function_values, global_count, time.time() - start_time]
 #end of run_proximal_accelerated
@@ -768,7 +784,7 @@ def prox(t,x):
             
         return 0    
     
-    return np.array(map(lambda k: coordinate_prox(k[0,0]), x.T)).T    
+    return np.matrix(map(lambda k: coordinate_prox(k[0,0]), x.T))    
 #end of prox
 
 #declares the gloal constant alpha function
@@ -973,7 +989,7 @@ def excecute_proximal_accelerated(print_progress = True):
                                     H, 
                                     prox, 
                                     F_gradient, 
-                                    alpha_fun_back_prox_acc, 
+                                    alpha_fun_cons, 
                                     global_eps, 
                                     initial = None , 
                                     print_progress = print_progress)
@@ -1022,13 +1038,15 @@ x[0,2] = 1
 
 print F_gradient(x)
 
-
-
-resul = excecute_ADDM()
+'''
+'''
+resul = excecute_subgradient()
 
 print resul[1]
 print resul[4]
 print resul[5]
+
+sys.exit('Ok')
 
 '''
 
@@ -1052,7 +1070,7 @@ plot_url = py.plot([trace_1], auto_open=False)
 
 sys.exit('Ok')
 '''
-
+'''
 #Runs the main experiment for each method and the graphs it
 print 'Start Subgradient '
 r_sub =  excecute_subgradient(False)
@@ -1082,9 +1100,6 @@ print('------------------------------')
 print('')
 print('------------------------------')
 
-
-'''
-
 print('Start Proximal Accelerated')
 r_acc =  excecute_proximal_accelerated(False)
 print('Ok')
@@ -1095,7 +1110,7 @@ print('------------------------------')
 print('')
 print('------------------------------')
 
-'''
+
 
 #Plots the results
 #plot_log(resultado[3], resultado[1])
@@ -1106,16 +1121,15 @@ dif = map(lambda y: math.log(math.fabs(y - r_stoc[1])), (t for t in r_stoc[3] if
 trace_2 = go.Scatter(x = range(len(dif)), y =  dif)
 dif = map(lambda y: math.log(math.fabs(y - r_prox[1])),(t for t in r_prox[3] if t > r_prox[1]))
 trace_3 = go.Scatter(x = range(len(dif)), y =  dif)
-
-#dif = map(lambda y: math.log(y - r_acc[1] ),(t for t in r_acc[3] if t > r_acc[1]))
-#trace_4 = go.Scatter(x = range(len(dif)), y =  dif)
+dif = map(lambda y: math.log(y - r_acc[1] ),(t for t in r_acc[3] if t > r_acc[1]))
+trace_4 = go.Scatter(x = range(len(dif)), y =  dif)
 
 #Export graph
-plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+plot_url = py.plot([trace_1,trace_2,trace_3, trace_4], auto_open=False)
 
 print('Grafica logaritmica hecha')
 
-
+'''
 
 #Starts the experient for different lambda
 
@@ -1124,7 +1138,7 @@ res_stoc = []
 res_prox = []
 res_acc = []
 
-lambdas = [0.5] + range(1,1001,73) 
+lambdas = [0.5] + [1]  #range(1,1001,263) 
 
 for l in lambdas:
     lambda_value = l
@@ -1137,8 +1151,8 @@ for l in lambdas:
     r_prox =  excecute_proximal(print_progress = False)
     res_prox.append([r_prox[0],r_prox[1],r_prox[4],r_prox[5]])
 
-    #r_acc =  excecute_proximal_accelerated(print_progress = False)
-    #res_acc.append(r_acc[0],[r_acc[1],r_acc[4],r_acc[5]])
+    r_acc =  excecute_proximal_accelerated(print_progress = False)
+    res_acc.append([r_acc[0],r_acc[1],r_acc[4],r_acc[5]])
 
     print ('Finished: ' + str(l))
 
@@ -1147,24 +1161,24 @@ for l in lambdas:
 trace_1 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg.norm(w[0].T,1), res_sub))
 trace_2 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg.norm(w[0].T,1), res_stoc))
 trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg.norm(w[0].T,1), res_prox))
-#trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg(w[0].T,1), res_acc))
-plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: np.linalg.norm(w[0].T,1), res_acc))
+plot_url = py.plot([trace_1,trace_2,trace_3,trace_4], auto_open=False)
 print 'Grafica Tamanho de Beta'
 
 #Minimum reached
 trace_1 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_sub))
 trace_2 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_stoc))
 trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_prox))
-#trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_acc))
-plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[1], res_acc))
+plot_url = py.plot([trace_1,trace_2,trace_3,trace_4], auto_open=False)
 print 'Grafica Minimo Alcanzado'
 
 #Number of Iterations
 trace_1 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_sub))
 trace_2 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_stoc))
 trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_prox))
-#trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_acc))
-plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[2], res_acc))
+plot_url = py.plot([trace_1,trace_2,trace_3,trace_4], auto_open=False)
 print 'Grafica Numero de Iteraciones'
 
 
@@ -1172,9 +1186,12 @@ print 'Grafica Numero de Iteraciones'
 trace_1 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_sub))
 trace_2 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_stoc))
 trace_3 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_prox))
-#trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_acc))
-plot_url = py.plot([trace_1,trace_2,trace_3], auto_open=False)
+trace_4 = go.Scatter(x = lambdas, y =  map(lambda w: w[3], res_acc))
+plot_url = py.plot([trace_1,trace_2,trace_3,trace_4], auto_open=False)
 print 'Grafica Tiempo requerido'
+
+
+print 'Done!'
 
 
 
