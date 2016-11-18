@@ -38,13 +38,21 @@ py.sign_in('minigonche', '8cjqqmkb4o')
 
 data_x = np.matrix(pd.DataFrame.from_csv('data/Datos.csv', index_col = None))
 dim_data = data_x.shape[1]
-data_y = data_x[:,data_x.shape[1] - 1]
-data_x = data_x[:,0:(data_x.shape[1] - 1)]
-n = data_x.shape[0]
+m = 50
 
+data_y = data_x[:,data_x.shape[1] - 1]
+data_y = data_y[range(0,860,860//m),:]
+
+data_x = data_x[:,0:(data_x.shape[1] - 1)]
+data_x = data_x[range(0,860,860//m),:]
+
+n = data_x.shape[0]
+'''
 max_c = np.amax(data_x,0)
 for i in range(dim_data-1):
     data_x[:,i] = (1/max_c[0,i])*data_x[:,i]
+'''
+
 
 
 
@@ -65,9 +73,9 @@ global_alpha = 0.001
 #GLobal epsilon for treshold
 global_eps = 0.001
 #Measure how many iterations to print pogress
-print_counter = 3
+print_counter = 2
 #maximimum iteration
-max_ite = 30000
+max_ite = 200
 #global difference measure for gradient
 global_dif = 0.000001
 #Global alpha step
@@ -543,6 +551,7 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         
         if print_progress and count == print_counter:
             print(min_value)
+            print global_count
             count = 0
         
         count = count + 1
@@ -560,7 +569,7 @@ def run_ADMM(dim, f_array, array_gradient_f, g, subgradient_g, alpha, eps, initi
         function_values.append(min_value)
 
         #Checks the the treshold
-        treshold = global_count > max_ite or math.fabs(min_value - last_min) < 0.001
+        treshold = global_count > max_ite or math.fabs(min_value - last_min) < 0.0001
 
     x_final = x
     value_final = sum(map(lambda f: f(x),f_array)) + g(x)    
@@ -695,7 +704,7 @@ def parallel_min(args):
 
     #Variables for the gradient descent
     B = np.identity(dim)
-    eps = 0.01
+    eps = 0.0001
     a_grad = 0.0001
 
 
@@ -721,7 +730,7 @@ def parallel_min(args):
         grad = first_term + second_term
 
         #calculates alpha using backtracking        
-        rho = 4/5
+        rho = 3/5
         c = 3/5        
         alpha = 1
 
@@ -1040,7 +1049,8 @@ print F_gradient(x)
 
 '''
 '''
-resul = excecute_subgradient()
+resul = excecute_proximal()
+
 
 print resul[1]
 print resul[4]
@@ -1054,7 +1064,7 @@ sys.exit('Ok')
 #-------------------------- Graphing Script ---------------------------
 #---------------------------------------------------------------------- 
 
-'''
+
 #Corre addm
 r_ADMM =  excecute_ADDM(True)
 print('Ok')
@@ -1069,7 +1079,7 @@ plot_url = py.plot([trace_1], auto_open=False)
 
 
 sys.exit('Ok')
-'''
+
 '''
 #Runs the main experiment for each method and the graphs it
 print 'Start Subgradient '
@@ -1138,7 +1148,7 @@ res_stoc = []
 res_prox = []
 res_acc = []
 
-lambdas = [0.5] + [1]  #range(1,1001,263) 
+lambdas = [0.5] + range(5,1001,189) 
 
 for l in lambdas:
     lambda_value = l
